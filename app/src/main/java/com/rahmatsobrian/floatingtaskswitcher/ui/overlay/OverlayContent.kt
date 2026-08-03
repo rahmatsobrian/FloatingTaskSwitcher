@@ -3,6 +3,7 @@ package com.rahmatsobrian.floatingtaskswitcher.ui.overlay
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
@@ -11,22 +12,28 @@ import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Apps
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -37,17 +44,37 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.drawable.toBitmap
+import com.rahmatsobrian.floatingtaskswitcher.data.local.PanelStyle
 import com.rahmatsobrian.floatingtaskswitcher.domain.model.RunningApp
 
+/**
+ * Root composable for the overlay window.
+ *
+ * Dragging is implemented with Compose's own gesture detector on the same
+ * node that also needs tap-to-expand, instead of an outer Android
+ * View.OnTouchListener. A plain View touch listener on the ComposeView never
+ * actually receives move events here because the child AndroidComposeView
+ * consumes ACTION_DOWN first for its own pointer input (clickable icons
+ * inside), so the listener silently loses the gesture. Handling both drag
+ * and tap inside one pointerInput block avoids that conflict entirely.
+ */
 @Composable
 fun OverlayRoot(
     state: OverlayUiState,
     onToggleExpanded: () -> Unit,
+    onCollapse: () -> Unit,
     onAppClick: (RunningApp) -> Unit,
     onAppLongClick: (RunningApp) -> Unit,
+    onBubbleTap: () -> Unit,
+    onDrag: (dx: Float, dy: Float) -> Unit,
+    onDragEnd: () -> Unit,
+    onInteraction: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val cornerRadius by animateDpAsState(
@@ -55,9 +82,41 @@ fun OverlayRoot(
         animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
         label = "cornerRadius",
     )
+    val effectiveAlpha by animateFloatAsState(
+        targetValue = if (state.isPeeking) 0.35f else state.opacity,
+        label = "overlayAlpha",
+    )
 
     Surface(
-        modifier = modifier.alpha(state.opacity),
+        modifier = modifier
+            .alpha(effectiveAlpha)
+            .then(
+                if (!state.isExpanded) {
+                    Modifier.pointerInput(Unit) {
+                        awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            onInteraction()
+                            var dragged = false
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                if (!change.pressed) {
+                                    if (!dragged) onBubbleTap() else onDragEnd()
+                                    break
+                                }
+                                val delta = change.positionChange()
+                                if (delta.x != 0f || delta.y != 0f) {
+                                    dragged = true
+                                    change.consume()
+                                    onDrag(delta.x, delta.y)
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    Modifier
+                },
+            ),
         shape = RoundedCornerShape(cornerRadius),
         tonalElevation = 6.dp,
         shadowElevation = 8.dp,
@@ -68,21 +127,23 @@ fun OverlayRoot(
             enter = expandHorizontally() + fadeIn(),
             exit = shrinkHorizontally() + fadeOut(),
         ) {
-            ExpandedPanel(state = state, onAppClick = onAppClick, onAppLongClick = onAppLongClick)
+            ExpandedPanel(
+                state = state,
+                onAppClick = onAppClick,
+                onAppLongClick = onAppLongClick,
+                onCollapse = onCollapse,
+            )
         }
         if (!state.isExpanded) {
-            CollapsedBubble(onClick = onToggleExpanded)
+            CollapsedBubble()
         }
     }
 }
 
 @Composable
-private fun CollapsedBubble(onClick: () -> Unit) {
+private fun CollapsedBubble() {
     Box(
-        modifier = Modifier
-            .size(56.dp)
-            .clip(CircleShape)
-            .clickable(onClick = onClick),
+        modifier = Modifier.size(56.dp),
         contentAlignment = Alignment.Center,
     ) {
         Icon(
@@ -98,8 +159,24 @@ private fun ExpandedPanel(
     state: OverlayUiState,
     onAppClick: (RunningApp) -> Unit,
     onAppLongClick: (RunningApp) -> Unit,
+    onCollapse: () -> Unit,
 ) {
     Column(modifier = Modifier.padding(8.dp)) {
+        Row(
+            modifier = Modifier.padding(bottom = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text(
+                text = "Recent Apps",
+                style = MaterialTheme.typography.labelSmall,
+                modifier = Modifier.padding(start = 4.dp),
+            )
+            IconButton(onClick = onCollapse) {
+                Icon(imageVector = Icons.Filled.KeyboardArrowDown, contentDescription = "Kecilkan ke bubble")
+            }
+        }
+
         if (state.isLoading && state.apps.isEmpty()) {
             Box(modifier = Modifier.size(56.dp), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(strokeWidth = 2.dp, modifier = Modifier.size(24.dp))
@@ -114,22 +191,58 @@ private fun ExpandedPanel(
             )
             return@Column
         }
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            items(state.filteredApps, key = { it.packageName }) { app ->
-                AppIconItem(app = app, onClick = { onAppClick(app) }, onLongClick = { onAppLongClick(app) })
+
+        when (state.panelStyle) {
+            PanelStyle.VERTICAL_DOCK -> LazyColumn(
+                modifier = Modifier.size(width = 72.dp, height = 320.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                items(state.filteredApps, key = { it.packageName }) { app ->
+                    AppIconItem(app = app, iconSize = 44.dp, showLabel = true, onClick = { onAppClick(app) }, onLongClick = { onAppLongClick(app) })
+                }
             }
+            PanelStyle.GRID -> LazyVerticalGrid(
+                columns = GridCells.Fixed(4),
+                modifier = Modifier.size(width = 260.dp, height = 220.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                items(state.filteredApps, key = { it.packageName }) { app ->
+                    AppIconItem(app = app, iconSize = 40.dp, showLabel = true, onClick = { onAppClick(app) }, onLongClick = { onAppLongClick(app) })
+                }
+            }
+            PanelStyle.COMPACT -> LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                items(state.filteredApps, key = { it.packageName }) { app ->
+                    AppIconItem(app = app, iconSize = 32.dp, showLabel = false, onClick = { onAppClick(app) }, onLongClick = { onAppLongClick(app) })
+                }
+            }
+            // MINI_BUBBLE never reaches an expanded panel (see OverlayService: tapping the
+            // bubble in this style switches directly to the most-recent app instead of
+            // expanding). EXPAND_PANEL and HORIZONTAL_DOCK share this roomier row layout.
+            PanelStyle.HORIZONTAL_DOCK, PanelStyle.EXPAND_PANEL, PanelStyle.MINI_BUBBLE ->
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    items(state.filteredApps, key = { it.packageName }) { app ->
+                        AppIconItem(app = app, iconSize = 44.dp, showLabel = true, onClick = { onAppClick(app) }, onLongClick = { onAppLongClick(app) })
+                    }
+                }
         }
     }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun AppIconItem(app: RunningApp, onClick: () -> Unit, onLongClick: () -> Unit) {
+private fun AppIconItem(
+    app: RunningApp,
+    iconSize: Dp,
+    showLabel: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+) {
     Column(
         modifier = Modifier
             .clip(RoundedCornerShape(14.dp))
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-            .padding(6.dp),
+            .padding(4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         val icon = app.icon
@@ -140,7 +253,7 @@ private fun AppIconItem(app: RunningApp, onClick: () -> Unit, onLongClick: () ->
         }
         Box(
             modifier = Modifier
-                .size(44.dp)
+                .size(iconSize)
                 .clip(CircleShape)
                 .background(ringColor.copy(alpha = if (app.isCurrentForeground) 0.24f else 1f)),
             contentAlignment = Alignment.Center,
@@ -149,18 +262,20 @@ private fun AppIconItem(app: RunningApp, onClick: () -> Unit, onLongClick: () ->
                 Image(
                     bitmap = icon.toBitmap(width = 128, height = 128).asImageBitmap(),
                     contentDescription = app.label,
-                    modifier = Modifier.size(36.dp),
+                    modifier = Modifier.size(iconSize * 0.8f),
                 )
             } else {
                 Icon(imageVector = Icons.Filled.Apps, contentDescription = app.label)
             }
         }
-        Text(
-            text = app.label,
-            style = MaterialTheme.typography.labelSmall,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.size(width = 52.dp, height = 16.dp),
-        )
+        if (showLabel) {
+            Text(
+                text = app.label,
+                style = MaterialTheme.typography.labelSmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.size(width = 52.dp, height = 16.dp),
+            )
+        }
     }
 }

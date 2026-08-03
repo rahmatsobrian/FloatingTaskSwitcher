@@ -2,15 +2,14 @@ package com.rahmatsobrian.floatingtaskswitcher.service
 
 import android.app.NotificationManager
 import android.app.PendingIntent
-import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ApplicationInfo
 import android.graphics.PixelFormat
 import android.os.Build
 import android.os.IBinder
 import android.provider.Settings
 import android.view.Gravity
-import android.view.MotionEvent
 import android.view.WindowManager
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -20,12 +19,14 @@ import androidx.core.app.NotificationCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleService
 import androidx.lifecycle.lifecycleScope
-import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import androidx.lifecycle.setViewTreeLifecycleOwner
 import androidx.lifecycle.setViewTreeViewModelStoreOwner
+import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.rahmatsobrian.floatingtaskswitcher.NOTIFICATION_CHANNEL_OVERLAY
 import com.rahmatsobrian.floatingtaskswitcher.R
 import com.rahmatsobrian.floatingtaskswitcher.core.permission.OperatingModeManager
+import com.rahmatsobrian.floatingtaskswitcher.data.local.DarkModeOption
+import com.rahmatsobrian.floatingtaskswitcher.data.local.PanelStyle
 import com.rahmatsobrian.floatingtaskswitcher.data.local.SettingsDataStore
 import com.rahmatsobrian.floatingtaskswitcher.domain.model.RunningApp
 import com.rahmatsobrian.floatingtaskswitcher.domain.model.SortMode
@@ -35,16 +36,18 @@ import com.rahmatsobrian.floatingtaskswitcher.ui.overlay.OverlayRoot
 import com.rahmatsobrian.floatingtaskswitcher.ui.overlay.OverlayUiState
 import com.rahmatsobrian.floatingtaskswitcher.ui.theme.FloatingTaskSwitcherTheme
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlin.math.abs
 import javax.inject.Inject
 
 private const val NOTIFICATION_ID = 4201
 private const val ACTION_PAUSE = "com.rahmatsobrian.floatingtaskswitcher.action.PAUSE"
 private const val ACTION_RESUME = "com.rahmatsobrian.floatingtaskswitcher.action.RESUME"
 private const val ACTION_EXIT = "com.rahmatsobrian.floatingtaskswitcher.action.EXIT"
+private const val AUTO_HIDE_IDLE_MS = 3_000L
 
 @AndroidEntryPoint
 class OverlayService : LifecycleService() {
@@ -60,7 +63,13 @@ class OverlayService : LifecycleService() {
     private val serviceLifecycleOwner = ServiceLifecycleOwner()
 
     private var uiState by mutableStateOf(OverlayUiState())
+    private var currentDarkModeOption by mutableStateOf(DarkModeOption.SYSTEM)
+    private var currentDynamicColorEnabled by mutableStateOf(true)
     private var isPaused = false
+    private var isSnappedToLeftEdge = true
+    private var lastInteractionAtMillis = System.currentTimeMillis()
+    private var autoHideEnabled = false
+    private var gamingModeEnabled = true
 
     override fun onCreate() {
         super.onCreate()
@@ -70,6 +79,8 @@ class OverlayService : LifecycleService() {
 
         observeSettings()
         observeOperatingMode()
+        observeForegroundAppForGamingMode()
+        startAutoHideWatcher()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -95,11 +106,18 @@ class OverlayService : LifecycleService() {
     private fun observeSettings() {
         settingsDataStore.settings
             .onEach { settings ->
+                autoHideEnabled = settings.autoHideEnabled
+                gamingModeEnabled = settings.gamingModeEnabled
+                currentDarkModeOption = settings.darkModeOption
+                currentDynamicColorEnabled = settings.dynamicColorEnabled
+                val expandByDefault = settings.panelStyle == PanelStyle.EXPAND_PANEL && !uiState.isExpanded
                 uiState = uiState.copy(
                     panelStyle = settings.panelStyle,
                     opacity = settings.opacity,
                     cornerRadiusDp = settings.cornerRadiusDp,
+                    isExpanded = if (expandByDefault) true else uiState.isExpanded,
                 )
+                if (expandByDefault) refreshApps()
             }
             .launchIn(lifecycleScope)
     }
@@ -108,6 +126,48 @@ class OverlayService : LifecycleService() {
         operatingModeManager.currentMode
             .onEach { mode -> uiState = uiState.copy(operatingMode = mode) }
             .launchIn(lifecycleScope)
+    }
+
+    /** Gaming Mode: force the panel back to a collapsed bubble while a game is foregrounded. */
+    private fun observeForegroundAppForGamingMode() {
+        TaskAccessibilityService.foregroundPackage
+            .onEach { packageName ->
+                if (packageName == null || !gamingModeEnabled) return@onEach
+                if (isGamePackage(packageName) && uiState.isExpanded) {
+                    uiState = uiState.copy(isExpanded = false)
+                }
+            }
+            .launchIn(lifecycleScope)
+    }
+
+    private fun isGamePackage(packageName: String): Boolean {
+        val info = runCatching { packageManager.getApplicationInfo(packageName, 0) }.getOrNull() ?: return false
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            info.category == ApplicationInfo.CATEGORY_GAME
+        } else {
+            (info.flags and ApplicationInfo.FLAG_IS_GAME) != 0
+        }
+    }
+
+    /** Auto Hide: fade the collapsed bubble after a few seconds of no interaction. */
+    private fun startAutoHideWatcher() {
+        lifecycleScope.launch {
+            while (isActive) {
+                delay(1_000)
+                val idleFor = System.currentTimeMillis() - lastInteractionAtMillis
+                val shouldPeek = autoHideEnabled && !uiState.isExpanded && idleFor >= AUTO_HIDE_IDLE_MS
+                if (shouldPeek != uiState.isPeeking) {
+                    uiState = uiState.copy(isPeeking = shouldPeek)
+                }
+            }
+        }
+    }
+
+    private fun onInteraction() {
+        lastInteractionAtMillis = System.currentTimeMillis()
+        if (uiState.isPeeking) {
+            uiState = uiState.copy(isPeeking = false)
+        }
     }
 
     private fun refreshApps() {
@@ -144,16 +204,23 @@ class OverlayService : LifecycleService() {
             setViewTreeViewModelStoreOwner(serviceLifecycleOwner)
             setViewTreeSavedStateRegistryOwner(serviceLifecycleOwner)
             setContent {
-                FloatingTaskSwitcherTheme {
+                FloatingTaskSwitcherTheme(
+                    darkModeOption = currentDarkModeOption,
+                    dynamicColorEnabled = currentDynamicColorEnabled,
+                ) {
                     OverlayRoot(
                         state = uiState,
                         onToggleExpanded = ::onToggleExpanded,
+                        onCollapse = ::onCollapse,
                         onAppClick = ::onAppClick,
                         onAppLongClick = { /* Quick actions menu: extended in a follow-up iteration */ },
+                        onBubbleTap = ::onBubbleTap,
+                        onDrag = ::onBubbleDrag,
+                        onDragEnd = ::onBubbleDragEnd,
+                        onInteraction = ::onInteraction,
                     )
                 }
             }
-            setOnTouchListener(dragTouchListener(params))
         }
         composeView = view
         windowManager.addView(view, params)
@@ -170,6 +237,27 @@ class OverlayService : LifecycleService() {
         if (uiState.isExpanded) refreshApps()
     }
 
+    private fun onCollapse() {
+        uiState = uiState.copy(isExpanded = false)
+    }
+
+    /**
+     * Tapping the collapsed bubble normally toggles the panel open. In Mini Bubble style the
+     * whole point is to skip the panel: a tap instantly switches to the most recently used app.
+     */
+    private fun onBubbleTap() {
+        if (uiState.panelStyle == PanelStyle.MINI_BUBBLE) {
+            val mostRecent = uiState.apps.firstOrNull()
+            if (mostRecent != null) {
+                onAppClick(mostRecent)
+            } else {
+                refreshApps()
+            }
+        } else {
+            onToggleExpanded()
+        }
+    }
+
     private fun onAppClick(app: RunningApp) {
         lifecycleScope.launch {
             switchToAppUseCase(app.packageName)
@@ -177,53 +265,24 @@ class OverlayService : LifecycleService() {
         }
     }
 
-    private fun dragTouchListener(params: WindowManager.LayoutParams): (android.view.View, MotionEvent) -> Boolean {
-        var initialX = 0
-        var initialY = 0
-        var initialTouchX = 0f
-        var initialTouchY = 0f
-        var isDragging = false
+    private fun onBubbleDrag(dx: Float, dy: Float) {
+        val params = layoutParams ?: return
+        params.x += dx.toInt()
+        params.y += dy.toInt()
+        runCatching { windowManager.updateViewLayout(composeView, params) }
+    }
 
-        return { view, event ->
-            when (event.action) {
-                MotionEvent.ACTION_DOWN -> {
-                    initialX = params.x
-                    initialY = params.y
-                    initialTouchX = event.rawX
-                    initialTouchY = event.rawY
-                    isDragging = false
-                    true
-                }
-                MotionEvent.ACTION_MOVE -> {
-                    val dx = (event.rawX - initialTouchX)
-                    val dy = (event.rawY - initialTouchY)
-                    if (abs(dx) > 8 || abs(dy) > 8) isDragging = true
-                    if (isDragging && !uiState.isExpanded) {
-                        params.x = initialX + dx.toInt()
-                        params.y = initialY + dy.toInt()
-                        runCatching { windowManager.updateViewLayout(composeView, params) }
-                    }
-                    true
-                }
-                MotionEvent.ACTION_UP -> {
-                    if (isDragging) {
-                        snapToNearestEdge(params)
-                    } else {
-                        view.performClick()
-                        onToggleExpanded()
-                    }
-                    true
-                }
-                else -> false
-            }
-        }
+    private fun onBubbleDragEnd() {
+        layoutParams?.let { snapToNearestEdge(it) }
     }
 
     private fun snapToNearestEdge(params: WindowManager.LayoutParams) {
         val displayMetrics = resources.displayMetrics
         val screenWidth = displayMetrics.widthPixels
         val bubbleWidth = composeView?.width ?: 150
-        val targetX = if (params.x + bubbleWidth / 2 < screenWidth / 2) 0 else screenWidth - bubbleWidth
+        val snapLeft = params.x + bubbleWidth / 2 < screenWidth / 2
+        isSnappedToLeftEdge = snapLeft
+        val targetX = if (snapLeft) 0 else screenWidth - bubbleWidth
         val animator = android.animation.ValueAnimator.ofInt(params.x, targetX).apply {
             duration = 220
             addUpdateListener {

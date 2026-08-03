@@ -38,9 +38,11 @@ fun FloatingTaskSwitcherTheme(
     val dynamicSupported = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
 
     val colorScheme = when {
+        darkModeOption == DarkModeOption.AMOLED && dynamicColorEnabled && dynamicSupported ->
+            dynamicDarkColorScheme(context).copy(background = Color.Black, surface = Color.Black)
+        darkModeOption == DarkModeOption.AMOLED -> AmoledColors
         dynamicColorEnabled && dynamicSupported && useDark -> dynamicDarkColorScheme(context)
         dynamicColorEnabled && dynamicSupported && !useDark -> dynamicLightColorScheme(context)
-        darkModeOption == DarkModeOption.AMOLED -> AmoledColors
         useDark -> DarkColors
         else -> LightColors
     }

@@ -28,18 +28,26 @@ class HomeViewModel @Inject constructor(
     operatingModeManager: OperatingModeManager,
 ) : ViewModel() {
 
-    private val floatingEnabledFlow = settingsDataStore.settings
+    // Bumped by refresh() so returning from a system Settings screen (where the user just
+    // granted overlay/usage-access permission) re-evaluates essentialsGranted immediately,
+    // instead of waiting for settingsDataStore/operatingMode to happen to change on their own.
+    private val refreshTick = MutableStateFlow(0)
 
     val uiState: StateFlow<HomeUiState> = combine(
-        floatingEnabledFlow,
+        settingsDataStore.settings,
         operatingModeManager.currentMode,
-    ) { settings, mode ->
+        refreshTick,
+    ) { settings, mode, _ ->
         HomeUiState(
             floatingEnabled = settings.floatingServiceEnabled,
             operatingMode = mode,
             essentialsGranted = permissionRepository.isOverlayGranted() && permissionRepository.isUsageAccessGranted(),
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeUiState())
+
+    fun refresh() {
+        refreshTick.value += 1
+    }
 
     fun setFloatingEnabled(enabled: Boolean) {
         viewModelScope.launch {

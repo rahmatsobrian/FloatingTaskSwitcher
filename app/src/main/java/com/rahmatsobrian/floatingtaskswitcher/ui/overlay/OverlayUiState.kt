@@ -13,6 +13,8 @@ data class OverlayUiState(
     val cornerRadiusDp: Int = 24,
     val operatingMode: OperatingMode = OperatingMode.STANDARD,
     val isLoading: Boolean = false,
+    /** True when Auto Hide has faded the collapsed bubble due to inactivity. */
+    val isPeeking: Boolean = false,
 ) {
     val filteredApps: List<RunningApp>
         get() = if (searchQuery.isBlank()) {

@@ -1,6 +1,7 @@
 package com.rahmatsobrian.floatingtaskswitcher.ui.settings
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -42,7 +43,10 @@ fun SettingsScreen(
         ) {
             item {
                 SectionTitle("Mode Tampilan")
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
                     PanelStyle.entries.forEach { style ->
                         FilterChip(
                             selected = settings.panelStyle == style,
@@ -99,7 +103,7 @@ fun SettingsScreen(
             item { Divider() }
             item {
                 SectionTitle("Dark Mode")
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     DarkModeOption.entries.forEach { option ->
                         FilterChip(
                             selected = settings.darkModeOption == option,

@@ -26,6 +26,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.rahmatsobrian.floatingtaskswitcher.R
 import com.rahmatsobrian.floatingtaskswitcher.domain.model.PermissionSnapshot
@@ -47,6 +49,10 @@ fun PermissionManagerScreen(
     val snapshot by viewModel.snapshot.collectAsStateWithLifecycle()
     val rootInFlight by viewModel.rootRequestInFlight.collectAsState()
     val context = LocalContext.current
+
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        viewModel.refresh()
+    }
 
     val rows = buildPermissionRows(
         snapshot = snapshot,
