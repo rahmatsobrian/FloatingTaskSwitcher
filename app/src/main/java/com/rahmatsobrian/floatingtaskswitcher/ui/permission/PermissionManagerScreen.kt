@@ -78,6 +78,7 @@ fun PermissionManagerScreen(
         onRequestShizuku = viewModel::onRequestShizuku,
         onRequestRoot = viewModel::onRequestRoot,
     )
+    val rootTitle = stringRes(R.string.permission_root_title)
 
     Scaffold(
         topBar = { TopAppBar(title = { Text("Permission Manager") }) },
@@ -87,7 +88,6 @@ fun PermissionManagerScreen(
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            val rootTitle = stringRes(R.string.permission_root_title)
             items(rows) { row ->
                 PermissionCard(row = row, isBusy = row.title == rootTitle && rootInFlight)
             }
