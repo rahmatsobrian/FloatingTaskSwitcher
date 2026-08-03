@@ -25,6 +25,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -207,7 +208,7 @@ private fun ExpandedPanel(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                items(state.filteredApps, key = { it.packageName }) { app ->
+                gridItems(state.filteredApps, key = { it.packageName }) { app ->
                     AppIconItem(app = app, iconSize = 40.dp, showLabel = true, onClick = { onAppClick(app) }, onLongClick = { onAppLongClick(app) })
                 }
             }
