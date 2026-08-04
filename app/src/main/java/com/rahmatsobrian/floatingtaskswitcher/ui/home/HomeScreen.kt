@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -102,15 +103,16 @@ fun HomeScreen(
 
             OutlinedButton(onClick = onOpenPermissionManager, modifier = Modifier.fillMaxWidth()) {
                 Icon(imageVector = Icons.Filled.Security, contentDescription = null)
-                Spacer(modifier = Modifier.height(0.dp))
-                Text(text = "  Permission Manager")
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(text = "Permission Manager")
             }
 
             Spacer(modifier = Modifier.height(8.dp))
 
             OutlinedButton(onClick = onOpenSettings, modifier = Modifier.fillMaxWidth()) {
                 Icon(imageVector = Icons.Filled.Settings, contentDescription = null)
-                Text(text = "  Pengaturan")
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(text = "Pengaturan")
             }
         }
     }

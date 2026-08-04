@@ -10,6 +10,7 @@ import android.os.Build
 import android.os.IBinder
 import android.provider.Settings
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.WindowManager
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -47,7 +48,8 @@ private const val NOTIFICATION_ID = 4201
 private const val ACTION_PAUSE = "com.rahmatsobrian.floatingtaskswitcher.action.PAUSE"
 private const val ACTION_RESUME = "com.rahmatsobrian.floatingtaskswitcher.action.RESUME"
 private const val ACTION_EXIT = "com.rahmatsobrian.floatingtaskswitcher.action.EXIT"
-private const val AUTO_HIDE_IDLE_MS = 3_000L
+private const val AUTO_HIDE_PEEK_IDLE_MS = 3_000L
+private const val AUTO_HIDE_COLLAPSE_IDLE_MS = 5_000L
 
 @AndroidEntryPoint
 class OverlayService : LifecycleService() {
@@ -128,11 +130,15 @@ class OverlayService : LifecycleService() {
             .launchIn(lifecycleScope)
     }
 
-    /** Gaming Mode: force the panel back to a collapsed bubble while a game is foregrounded. */
+    /**
+     * Gaming Mode: force the panel back to a collapsed bubble while a game is foregrounded.
+     * Skipped for Expand Panel style, which is meant to stay open as a persistent dock.
+     */
     private fun observeForegroundAppForGamingMode() {
         TaskAccessibilityService.foregroundPackage
             .onEach { packageName ->
                 if (packageName == null || !gamingModeEnabled) return@onEach
+                if (uiState.panelStyle == PanelStyle.EXPAND_PANEL) return@onEach
                 if (isGamePackage(packageName) && uiState.isExpanded) {
                     uiState = uiState.copy(isExpanded = false)
                 }
@@ -149,15 +155,30 @@ class OverlayService : LifecycleService() {
         }
     }
 
-    /** Auto Hide: fade the collapsed bubble after a few seconds of no interaction. */
+    /**
+     * Auto Hide has two effects, matching how the person described it:
+     *  - collapsed & idle for a while -> fade to low opacity ("peek"), full opacity returns on touch
+     *  - expanded & idle for a while  -> auto-collapse back to the bubble
+     * Expand Panel style is exempt from the auto-collapse half, since it is meant to stay open.
+     */
     private fun startAutoHideWatcher() {
         lifecycleScope.launch {
             while (isActive) {
                 delay(1_000)
+                if (!autoHideEnabled) continue
                 val idleFor = System.currentTimeMillis() - lastInteractionAtMillis
-                val shouldPeek = autoHideEnabled && !uiState.isExpanded && idleFor >= AUTO_HIDE_IDLE_MS
-                if (shouldPeek != uiState.isPeeking) {
-                    uiState = uiState.copy(isPeeking = shouldPeek)
+                when {
+                    uiState.isExpanded && uiState.panelStyle != PanelStyle.EXPAND_PANEL &&
+                        idleFor >= AUTO_HIDE_COLLAPSE_IDLE_MS -> {
+                        uiState = uiState.copy(isExpanded = false)
+                        lastInteractionAtMillis = System.currentTimeMillis()
+                    }
+                    !uiState.isExpanded -> {
+                        val shouldPeek = idleFor >= AUTO_HIDE_PEEK_IDLE_MS
+                        if (shouldPeek != uiState.isPeeking) {
+                            uiState = uiState.copy(isPeeking = shouldPeek)
+                        }
+                    }
                 }
             }
         }
@@ -167,6 +188,13 @@ class OverlayService : LifecycleService() {
         lastInteractionAtMillis = System.currentTimeMillis()
         if (uiState.isPeeking) {
             uiState = uiState.copy(isPeeking = false)
+        }
+    }
+
+    /** Tap outside the overlay window: collapse the panel, unless it's the "always open" style. */
+    private fun onOutsideTouch() {
+        if (uiState.isExpanded && uiState.panelStyle != PanelStyle.EXPAND_PANEL) {
+            onCollapse()
         }
     }
 
@@ -186,11 +214,20 @@ class OverlayService : LifecycleService() {
             WindowManager.LayoutParams.TYPE_PHONE
         }
 
+        // FLAG_LAYOUT_NO_LIMITS is deliberately NOT set: without it, the window is confined to
+        // the screen's decor area, which is what keeps the bubble/panel from being drawn under
+        // the status bar or the navigation bar.
+        // FLAG_NOT_TOUCH_MODAL lets touches outside our bounds pass through to the app below
+        // instead of being silently swallowed, and is required for FLAG_WATCH_OUTSIDE_TOUCH to
+        // deliver an ACTION_OUTSIDE event so we can auto-collapse an expanded panel on an
+        // outside tap.
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
             overlayType,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,
             PixelFormat.TRANSLUCENT,
         ).apply {
             gravity = Gravity.TOP or Gravity.START
@@ -199,7 +236,7 @@ class OverlayService : LifecycleService() {
         }
         layoutParams = params
 
-        val view = ComposeView(this).apply {
+        val view = OutsideTouchComposeView(this, onOutsideTouch = ::onOutsideTouch).apply {
             setViewTreeLifecycleOwner(serviceLifecycleOwner)
             setViewTreeViewModelStoreOwner(serviceLifecycleOwner)
             setViewTreeSavedStateRegistryOwner(serviceLifecycleOwner)
@@ -219,6 +256,16 @@ class OverlayService : LifecycleService() {
                         onDragEnd = ::onBubbleDragEnd,
                         onInteraction = ::onInteraction,
                     )
+                }
+            }
+            // WRAP_CONTENT means the window resizes whenever the panel expands/collapses or
+            // switches layout style. Re-clamp on every size change so a bigger panel can't end
+            // up partially off-screen after growing from a bubble pinned near an edge.
+            addOnLayoutChangeListener { _, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom ->
+                val sizeChanged = (right - left) != (oldRight - oldLeft) || (bottom - top) != (oldBottom - oldTop)
+                if (sizeChanged) {
+                    clampToScreen(params)
+                    runCatching { windowManager.updateViewLayout(this, params) }
                 }
             }
         }
@@ -242,7 +289,7 @@ class OverlayService : LifecycleService() {
     }
 
     /**
-     * Tapping the collapsed bubble normally toggles the panel open. In Mini Bubble style the
+     * Tapping the collapsed bubble normally toggles the panel open. In Quick Switch style the
      * whole point is to skip the panel: a tap instantly switches to the most recently used app.
      */
     private fun onBubbleTap() {
@@ -269,6 +316,7 @@ class OverlayService : LifecycleService() {
         val params = layoutParams ?: return
         params.x += dx.toInt()
         params.y += dy.toInt()
+        clampToScreen(params)
         runCatching { windowManager.updateViewLayout(composeView, params) }
     }
 
@@ -276,13 +324,25 @@ class OverlayService : LifecycleService() {
         layoutParams?.let { snapToNearestEdge(it) }
     }
 
+    /** Keeps the window's x/y fully within the current display bounds. */
+    private fun clampToScreen(params: WindowManager.LayoutParams) {
+        val displayMetrics = resources.displayMetrics
+        val viewWidth = composeView?.width?.takeIf { it > 0 } ?: 150
+        val viewHeight = composeView?.height?.takeIf { it > 0 } ?: 150
+        val maxX = (displayMetrics.widthPixels - viewWidth).coerceAtLeast(0)
+        val maxY = (displayMetrics.heightPixels - viewHeight).coerceAtLeast(0)
+        params.x = params.x.coerceIn(0, maxX)
+        params.y = params.y.coerceIn(0, maxY)
+    }
+
     private fun snapToNearestEdge(params: WindowManager.LayoutParams) {
+        clampToScreen(params)
         val displayMetrics = resources.displayMetrics
         val screenWidth = displayMetrics.widthPixels
         val bubbleWidth = composeView?.width ?: 150
         val snapLeft = params.x + bubbleWidth / 2 < screenWidth / 2
         isSnappedToLeftEdge = snapLeft
-        val targetX = if (snapLeft) 0 else screenWidth - bubbleWidth
+        val targetX = (if (snapLeft) 0 else screenWidth - bubbleWidth).coerceAtLeast(0)
         val animator = android.animation.ValueAnimator.ofInt(params.x, targetX).apply {
             duration = 220
             addUpdateListener {
@@ -369,5 +429,23 @@ class OverlayService : LifecycleService() {
         fun stop(context: Context) {
             context.startService(Intent(context, OverlayService::class.java).setAction(ACTION_EXIT))
         }
+    }
+}
+
+/**
+ * A plain View.OnTouchListener never sees MotionEvent.ACTION_OUTSIDE - it is only ever
+ * delivered through dispatchTouchEvent on the window's root view, which is why this needs a
+ * tiny ComposeView subclass rather than a listener.
+ */
+private class OutsideTouchComposeView(
+    context: Context,
+    private val onOutsideTouch: () -> Unit,
+) : ComposeView(context) {
+    override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        if (event.action == MotionEvent.ACTION_OUTSIDE) {
+            onOutsideTouch()
+            return true
+        }
+        return super.dispatchTouchEvent(event)
     }
 }

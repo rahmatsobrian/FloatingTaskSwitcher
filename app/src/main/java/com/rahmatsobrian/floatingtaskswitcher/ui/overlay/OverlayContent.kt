@@ -12,6 +12,7 @@ import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -34,7 +35,6 @@ import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -91,33 +91,39 @@ fun OverlayRoot(
     Surface(
         modifier = modifier
             .alpha(effectiveAlpha)
-            .then(
-                if (!state.isExpanded) {
-                    Modifier.pointerInput(Unit) {
-                        awaitEachGesture {
-                            val down = awaitFirstDown(requireUnconsumed = false)
-                            onInteraction()
-                            var dragged = false
-                            while (true) {
-                                val event = awaitPointerEvent()
-                                val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                                if (!change.pressed) {
-                                    if (!dragged) onBubbleTap() else onDragEnd()
-                                    break
-                                }
-                                val delta = change.positionChange()
-                                if (delta.x != 0f || delta.y != 0f) {
-                                    dragged = true
-                                    change.consume()
-                                    onDrag(delta.x, delta.y)
-                                }
-                            }
+            .pointerInput(Unit) {
+                // Applies in BOTH collapsed and expanded states (the person wants to be able to
+                // drag the panel around even while it's open), using a real touch-slop so a
+                // quick tap on an app icon underneath still resolves as a click rather than
+                // being swallowed here as a tiny drag.
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    onInteraction()
+                    var dragged = false
+                    var totalDx = 0f
+                    var totalDy = 0f
+                    val slop = viewConfiguration.touchSlop
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                        if (!change.pressed) {
+                            if (!dragged && !state.isExpanded) onBubbleTap()
+                            if (dragged) onDragEnd()
+                            break
+                        }
+                        val delta = change.positionChange()
+                        totalDx += delta.x
+                        totalDy += delta.y
+                        if (!dragged && (kotlin.math.abs(totalDx) > slop || kotlin.math.abs(totalDy) > slop)) {
+                            dragged = true
+                        }
+                        if (dragged) {
+                            change.consume()
+                            onDrag(delta.x, delta.y)
                         }
                     }
-                } else {
-                    Modifier
-                },
-            ),
+                }
+            },
         shape = RoundedCornerShape(cornerRadius),
         tonalElevation = 6.dp,
         shadowElevation = 8.dp,
@@ -164,7 +170,7 @@ private fun ExpandedPanel(
 ) {
     Column(modifier = Modifier.padding(8.dp)) {
         Row(
-            modifier = Modifier.padding(bottom = 4.dp),
+            modifier = Modifier.padding(bottom = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
@@ -173,8 +179,35 @@ private fun ExpandedPanel(
                 style = MaterialTheme.typography.labelSmall,
                 modifier = Modifier.padding(start = 4.dp),
             )
-            IconButton(onClick = onCollapse) {
-                Icon(imageVector = Icons.Filled.KeyboardArrowDown, contentDescription = "Kecilkan ke bubble")
+            if (state.panelStyle == PanelStyle.EXPAND_PANEL) {
+                Text(
+                    text = "Selalu terbuka",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(end = 4.dp),
+                )
+            } else {
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50))
+                        .background(MaterialTheme.colorScheme.secondaryContainer)
+                        .clickable(onClick = onCollapse)
+                        .padding(horizontal = 10.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.KeyboardArrowDown,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                        tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                    )
+                    Text(
+                        text = "Kecilkan",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                    )
+                }
             }
         }
 

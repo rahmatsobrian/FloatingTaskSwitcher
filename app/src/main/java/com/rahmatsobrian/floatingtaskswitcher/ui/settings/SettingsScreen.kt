@@ -52,15 +52,16 @@ fun SettingsScreen(
                         FilterChip(
                             selected = settings.panelStyle == style,
                             onClick = { viewModel.onPanelStyleChange(style) },
-                            label = {
-                                Text(
-                                    style.name.replace('_', ' ').lowercase()
-                                        .replaceFirstChar { it.uppercase() },
-                                )
-                            },
+                            label = { Text(style.displayLabel()) },
                         )
                     }
                 }
+                Text(
+                    text = settings.panelStyle.description(),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 6.dp),
+                )
             }
             item { Divider() }
             item {
@@ -96,7 +97,7 @@ fun SettingsScreen(
             }
             item {
                 SettingsSwitchRow(
-                    title = "Gaming Mode (mini bubble otomatis saat game)",
+                    title = "Gaming Mode (otomatis mengecil ke bubble saat main game)",
                     checked = settings.gamingModeEnabled,
                     onCheckedChange = viewModel::onGamingModeChange,
                 )
@@ -132,4 +133,22 @@ private fun SettingsSwitchRow(title: String, checked: Boolean, onCheckedChange: 
         Text(text = title, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 12.dp))
         Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
+}
+
+private fun PanelStyle.displayLabel(): String = when (this) {
+    PanelStyle.HORIZONTAL_DOCK -> "Horizontal Dock"
+    PanelStyle.VERTICAL_DOCK -> "Vertical Dock"
+    PanelStyle.GRID -> "Grid"
+    PanelStyle.COMPACT -> "Compact"
+    PanelStyle.MINI_BUBBLE -> "Ganti Cepat"
+    PanelStyle.EXPAND_PANEL -> "Panel Selalu Terbuka"
+}
+
+private fun PanelStyle.description(): String = when (this) {
+    PanelStyle.HORIZONTAL_DOCK -> "Tap bubble untuk membuka panel berbentuk baris mendatar."
+    PanelStyle.VERTICAL_DOCK -> "Tap bubble untuk membuka panel berbentuk kolom tegak."
+    PanelStyle.GRID -> "Tap bubble untuk membuka panel grid 4 kolom."
+    PanelStyle.COMPACT -> "Panel baris dengan icon lebih kecil dan tanpa nama aplikasi."
+    PanelStyle.MINI_BUBBLE -> "Tap bubble langsung pindah ke aplikasi terakhir, tanpa membuka panel sama sekali."
+    PanelStyle.EXPAND_PANEL -> "Panel selalu terbuka begitu floating aktif dan tidak bisa dikecilkan manual - cocok untuk dock permanen."
 }
