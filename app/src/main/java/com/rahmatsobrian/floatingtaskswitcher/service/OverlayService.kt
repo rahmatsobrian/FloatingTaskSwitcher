@@ -243,9 +243,6 @@ class OverlayService : LifecycleService() {
         layoutParams = params
 
         val composeContent = ComposeView(this).apply {
-            setViewTreeLifecycleOwner(serviceLifecycleOwner)
-            setViewTreeViewModelStoreOwner(serviceLifecycleOwner)
-            setViewTreeSavedStateRegistryOwner(serviceLifecycleOwner)
             setContent {
                 FloatingTaskSwitcherTheme(
                     darkModeOption = currentDarkModeOption,
@@ -267,6 +264,17 @@ class OverlayService : LifecycleService() {
         }
 
         val container = OutsideTouchContainer(this, onOutsideTouch = ::onOutsideTouch).apply {
+            // These must be set on THIS view, not on composeContent: Compose looks up the
+            // window recomposer's lifecycle owner starting from the root view actually added to
+            // WindowManager (this container), and only then walks up further ancestors - which
+            // there are none of here, since this container IS the window root. Setting the
+            // owners only on the ComposeView child (as before) left the container itself
+            // without a discoverable ViewTreeLifecycleOwner, crashing with
+            // "ViewTreeLifecycleOwner not found from OutsideTouchContainer" the instant the
+            // window attached.
+            setViewTreeLifecycleOwner(serviceLifecycleOwner)
+            setViewTreeViewModelStoreOwner(serviceLifecycleOwner)
+            setViewTreeSavedStateRegistryOwner(serviceLifecycleOwner)
             addView(
                 composeContent,
                 FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT),
