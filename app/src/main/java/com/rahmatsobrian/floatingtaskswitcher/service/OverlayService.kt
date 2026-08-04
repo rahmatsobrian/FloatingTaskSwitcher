@@ -283,7 +283,18 @@ class OverlayService : LifecycleService() {
             }
         }
         overlayView = container
-        windowManager.addView(container, params)
+        val attached = runCatching { windowManager.addView(container, params) }
+        if (attached.isFailure) {
+            android.util.Log.e(
+                "FloatingTaskSwitcher",
+                "Failed to attach overlay window",
+                attached.exceptionOrNull(),
+            )
+            overlayView = null
+            lifecycleScope.launch { settingsDataStore.updateFloatingServiceEnabled(false) }
+            stopSelf()
+            return
+        }
         serviceLifecycleOwner.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
     }
 

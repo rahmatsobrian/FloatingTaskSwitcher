@@ -5,6 +5,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.os.Build
 import com.rahmatsobrian.floatingtaskswitcher.core.permission.OperatingModeManager
+import com.rahmatsobrian.floatingtaskswitcher.core.util.CrashLogger
 import dagger.hilt.android.HiltAndroidApp
 import javax.inject.Inject
 
@@ -17,6 +18,7 @@ class FloatingTaskSwitcherApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        CrashLogger.install(this)
         createNotificationChannel()
         // Passive detection only (Root/Shizuku availability check); never prompts the user.
         operatingModeManager.initialize()

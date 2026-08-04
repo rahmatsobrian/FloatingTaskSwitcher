@@ -6,9 +6,12 @@ import com.rahmatsobrian.floatingtaskswitcher.data.local.DarkModeOption
 import com.rahmatsobrian.floatingtaskswitcher.data.local.FloatingSettings
 import com.rahmatsobrian.floatingtaskswitcher.data.local.PanelStyle
 import com.rahmatsobrian.floatingtaskswitcher.data.local.SettingsDataStore
+import com.rahmatsobrian.floatingtaskswitcher.data.repository.CrashLogRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -16,10 +19,14 @@ import javax.inject.Inject
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val settingsDataStore: SettingsDataStore,
+    private val crashLogRepository: CrashLogRepository,
 ) : ViewModel() {
 
     val settings: StateFlow<FloatingSettings> = settingsDataStore.settings
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), FloatingSettings())
+
+    private val _crashLog = MutableStateFlow(crashLogRepository.read())
+    val crashLog: StateFlow<String?> = _crashLog.asStateFlow()
 
     fun onPanelStyleChange(style: PanelStyle) = viewModelScope.launch {
         settingsDataStore.updatePanelStyle(style)
@@ -47,5 +54,14 @@ class SettingsViewModel @Inject constructor(
 
     fun onGamingModeChange(enabled: Boolean) = viewModelScope.launch {
         settingsDataStore.updateGamingMode(enabled)
+    }
+
+    fun refreshCrashLog() {
+        _crashLog.value = crashLogRepository.read()
+    }
+
+    fun clearCrashLog() {
+        crashLogRepository.clear()
+        _crashLog.value = null
     }
 }
