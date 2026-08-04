@@ -11,7 +11,9 @@ import android.os.IBinder
 import android.provider.Settings
 import android.view.Gravity
 import android.view.MotionEvent
+import android.view.View
 import android.view.WindowManager
+import android.widget.FrameLayout
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -60,7 +62,11 @@ class OverlayService : LifecycleService() {
     @Inject lateinit var operatingModeManager: OperatingModeManager
 
     private lateinit var windowManager: WindowManager
-    private var composeView: ComposeView? = null
+
+    /** The actual View added to the WindowManager (a small FrameLayout wrapping the ComposeView
+     *  below). ComposeView itself is `final` in this library version and can't be subclassed, so
+     *  outside-touch detection lives on this wrapper instead. */
+    private var overlayView: View? = null
     private var layoutParams: WindowManager.LayoutParams? = null
     private val serviceLifecycleOwner = ServiceLifecycleOwner()
 
@@ -96,7 +102,7 @@ class OverlayService : LifecycleService() {
             }
             else -> {
                 startForeground(NOTIFICATION_ID, buildNotification())
-                if (composeView == null && Settings.canDrawOverlays(this)) {
+                if (overlayView == null && Settings.canDrawOverlays(this)) {
                     attachOverlay()
                 }
                 refreshApps()
@@ -236,7 +242,7 @@ class OverlayService : LifecycleService() {
         }
         layoutParams = params
 
-        val view = OutsideTouchComposeView(this, onOutsideTouch = ::onOutsideTouch).apply {
+        val composeContent = ComposeView(this).apply {
             setViewTreeLifecycleOwner(serviceLifecycleOwner)
             setViewTreeViewModelStoreOwner(serviceLifecycleOwner)
             setViewTreeSavedStateRegistryOwner(serviceLifecycleOwner)
@@ -258,6 +264,13 @@ class OverlayService : LifecycleService() {
                     )
                 }
             }
+        }
+
+        val container = OutsideTouchContainer(this, onOutsideTouch = ::onOutsideTouch).apply {
+            addView(
+                composeContent,
+                FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT),
+            )
             // WRAP_CONTENT means the window resizes whenever the panel expands/collapses or
             // switches layout style. Re-clamp on every size change so a bigger panel can't end
             // up partially off-screen after growing from a bubble pinned near an edge.
@@ -269,14 +282,14 @@ class OverlayService : LifecycleService() {
                 }
             }
         }
-        composeView = view
-        windowManager.addView(view, params)
+        overlayView = container
+        windowManager.addView(container, params)
         serviceLifecycleOwner.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
     }
 
     private fun detachOverlay() {
-        composeView?.let { runCatching { windowManager.removeView(it) } }
-        composeView = null
+        overlayView?.let { runCatching { windowManager.removeView(it) } }
+        overlayView = null
     }
 
     private fun onToggleExpanded() {
@@ -317,7 +330,7 @@ class OverlayService : LifecycleService() {
         params.x += dx.toInt()
         params.y += dy.toInt()
         clampToScreen(params)
-        runCatching { windowManager.updateViewLayout(composeView, params) }
+        runCatching { windowManager.updateViewLayout(overlayView, params) }
     }
 
     private fun onBubbleDragEnd() {
@@ -327,8 +340,8 @@ class OverlayService : LifecycleService() {
     /** Keeps the window's x/y fully within the current display bounds. */
     private fun clampToScreen(params: WindowManager.LayoutParams) {
         val displayMetrics = resources.displayMetrics
-        val viewWidth = composeView?.width?.takeIf { it > 0 } ?: 150
-        val viewHeight = composeView?.height?.takeIf { it > 0 } ?: 150
+        val viewWidth = overlayView?.width?.takeIf { it > 0 } ?: 150
+        val viewHeight = overlayView?.height?.takeIf { it > 0 } ?: 150
         val maxX = (displayMetrics.widthPixels - viewWidth).coerceAtLeast(0)
         val maxY = (displayMetrics.heightPixels - viewHeight).coerceAtLeast(0)
         params.x = params.x.coerceIn(0, maxX)
@@ -339,7 +352,7 @@ class OverlayService : LifecycleService() {
         clampToScreen(params)
         val displayMetrics = resources.displayMetrics
         val screenWidth = displayMetrics.widthPixels
-        val bubbleWidth = composeView?.width ?: 150
+        val bubbleWidth = overlayView?.width ?: 150
         val snapLeft = params.x + bubbleWidth / 2 < screenWidth / 2
         isSnappedToLeftEdge = snapLeft
         val targetX = (if (snapLeft) 0 else screenWidth - bubbleWidth).coerceAtLeast(0)
@@ -347,7 +360,7 @@ class OverlayService : LifecycleService() {
             duration = 220
             addUpdateListener {
                 params.x = it.animatedValue as Int
-                runCatching { windowManager.updateViewLayout(composeView, params) }
+                runCatching { windowManager.updateViewLayout(overlayView, params) }
             }
         }
         animator.start()
@@ -434,13 +447,14 @@ class OverlayService : LifecycleService() {
 
 /**
  * A plain View.OnTouchListener never sees MotionEvent.ACTION_OUTSIDE - it is only ever
- * delivered through dispatchTouchEvent on the window's root view, which is why this needs a
- * tiny ComposeView subclass rather than a listener.
+ * delivered through dispatchTouchEvent on the window's root view. ComposeView is `final` in
+ * this library version and can't be subclassed to override that method directly, so this tiny
+ * FrameLayout wrapper hosts the ComposeView as a child instead and catches the event itself.
  */
-private class OutsideTouchComposeView(
+private class OutsideTouchContainer(
     context: Context,
     private val onOutsideTouch: () -> Unit,
-) : ComposeView(context) {
+) : FrameLayout(context) {
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
         if (event.action == MotionEvent.ACTION_OUTSIDE) {
             onOutsideTouch()
