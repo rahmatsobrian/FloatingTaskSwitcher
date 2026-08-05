@@ -76,6 +76,7 @@ class OverlayService : LifecycleService() {
     private var isPaused = false
     private var isSnappedToLeftEdge = true
     private var lastInteractionAtMillis = System.currentTimeMillis()
+    private var isDragging = false
     private var autoHideEnabled = false
     private var gamingModeEnabled = true
 
@@ -197,8 +198,11 @@ class OverlayService : LifecycleService() {
         }
     }
 
-    /** Tap outside the overlay window: collapse the panel, unless it's the "always open" style. */
+    /** Tap outside the overlay window: collapse the panel, unless it's the "always open" style
+     *  or a drag is currently in progress (moving the window mid-gesture can otherwise trigger
+     *  a spurious ACTION_OUTSIDE that closed the panel while the person was still dragging it). */
     private fun onOutsideTouch() {
+        if (isDragging) return
         if (uiState.isExpanded && uiState.panelStyle != PanelStyle.EXPAND_PANEL) {
             onCollapse()
         }
@@ -345,6 +349,7 @@ class OverlayService : LifecycleService() {
     }
 
     private fun onBubbleDrag(dx: Float, dy: Float) {
+        isDragging = true
         val params = layoutParams ?: return
         params.x += dx.toInt()
         params.y += dy.toInt()
@@ -354,6 +359,7 @@ class OverlayService : LifecycleService() {
 
     private fun onBubbleDragEnd() {
         layoutParams?.let { snapToNearestEdge(it) }
+        isDragging = false
     }
 
     /** Keeps the window's x/y fully within the current display bounds. */

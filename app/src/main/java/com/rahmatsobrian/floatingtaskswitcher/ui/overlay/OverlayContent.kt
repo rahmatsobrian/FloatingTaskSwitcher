@@ -32,6 +32,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Apps
+import androidx.compose.material.icons.filled.DragIndicator
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -57,13 +58,14 @@ import com.rahmatsobrian.floatingtaskswitcher.domain.model.RunningApp
 /**
  * Root composable for the overlay window.
  *
- * Dragging is implemented with Compose's own gesture detector on the same
- * node that also needs tap-to-expand, instead of an outer Android
- * View.OnTouchListener. A plain View touch listener on the ComposeView never
- * actually receives move events here because the child AndroidComposeView
- * consumes ACTION_DOWN first for its own pointer input (clickable icons
- * inside), so the listener silently loses the gesture. Handling both drag
- * and tap inside one pointerInput block avoids that conflict entirely.
+ * The collapsed bubble handles drag and tap-to-expand together in one gesture detector (see
+ * below) because a plain View.OnTouchListener never reliably gets the gesture - the child
+ * AndroidComposeView consumes ACTION_DOWN first for its own pointer input, so an outer listener
+ * silently loses it. Once expanded, dragging is intentionally NOT attached to the whole panel
+ * surface anymore: applying it there made small finger jitter while tapping an app icon or the
+ * "Kecilkan" button get misread as a drag, which both swallowed those taps and could shift the
+ * window mid-touch. Dragging while expanded is done through a dedicated handle in the header
+ * instead (see [ExpandedPanel]), so the rest of the panel is free for normal clicks.
  */
 @Composable
 fun OverlayRoot(
@@ -91,39 +93,41 @@ fun OverlayRoot(
     Surface(
         modifier = modifier
             .alpha(effectiveAlpha)
-            .pointerInput(Unit) {
-                // Applies in BOTH collapsed and expanded states (the person wants to be able to
-                // drag the panel around even while it's open), using a real touch-slop so a
-                // quick tap on an app icon underneath still resolves as a click rather than
-                // being swallowed here as a tiny drag.
-                awaitEachGesture {
-                    val down = awaitFirstDown(requireUnconsumed = false)
-                    onInteraction()
-                    var dragged = false
-                    var totalDx = 0f
-                    var totalDy = 0f
-                    val slop = viewConfiguration.touchSlop
-                    while (true) {
-                        val event = awaitPointerEvent()
-                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                        if (!change.pressed) {
-                            if (!dragged && !state.isExpanded) onBubbleTap()
-                            if (dragged) onDragEnd()
-                            break
-                        }
-                        val delta = change.positionChange()
-                        totalDx += delta.x
-                        totalDy += delta.y
-                        if (!dragged && (kotlin.math.abs(totalDx) > slop || kotlin.math.abs(totalDy) > slop)) {
-                            dragged = true
-                        }
-                        if (dragged) {
-                            change.consume()
-                            onDrag(delta.x, delta.y)
+            .then(
+                if (!state.isExpanded) {
+                    Modifier.pointerInput(Unit) {
+                        awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            onInteraction()
+                            var dragged = false
+                            var totalDx = 0f
+                            var totalDy = 0f
+                            val slop = viewConfiguration.touchSlop
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                if (!change.pressed) {
+                                    if (!dragged) onBubbleTap()
+                                    if (dragged) onDragEnd()
+                                    break
+                                }
+                                val delta = change.positionChange()
+                                totalDx += delta.x
+                                totalDy += delta.y
+                                if (!dragged && (kotlin.math.abs(totalDx) > slop || kotlin.math.abs(totalDy) > slop)) {
+                                    dragged = true
+                                }
+                                if (dragged) {
+                                    change.consume()
+                                    onDrag(delta.x, delta.y)
+                                }
+                            }
                         }
                     }
-                }
-            },
+                } else {
+                    Modifier
+                },
+            ),
         shape = RoundedCornerShape(cornerRadius),
         tonalElevation = 6.dp,
         shadowElevation = 8.dp,
@@ -139,6 +143,9 @@ fun OverlayRoot(
                 onAppClick = onAppClick,
                 onAppLongClick = onAppLongClick,
                 onCollapse = onCollapse,
+                onDrag = onDrag,
+                onDragEnd = onDragEnd,
+                onInteraction = onInteraction,
             )
         }
         if (!state.isExpanded) {
@@ -167,6 +174,9 @@ private fun ExpandedPanel(
     onAppClick: (RunningApp) -> Unit,
     onAppLongClick: (RunningApp) -> Unit,
     onCollapse: () -> Unit,
+    onDrag: (dx: Float, dy: Float) -> Unit,
+    onDragEnd: () -> Unit,
+    onInteraction: () -> Unit,
 ) {
     Column(modifier = Modifier.padding(8.dp)) {
         Row(
@@ -174,11 +184,42 @@ private fun ExpandedPanel(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            Text(
-                text = "Recent Apps",
-                style = MaterialTheme.typography.labelSmall,
-                modifier = Modifier.padding(start = 4.dp),
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                // Dedicated drag handle: dragging the whole panel is only recognized here, not
+                // over the app icons or the Kecilkan button, so a slightly shaky tap on those
+                // never gets misread as "the user is dragging the panel".
+                Icon(
+                    imageVector = Icons.Filled.DragIndicator,
+                    contentDescription = "Geser panel",
+                    modifier = Modifier
+                        .size(18.dp)
+                        .pointerInput(Unit) {
+                            awaitEachGesture {
+                                awaitFirstDown(requireUnconsumed = false)
+                                onInteraction()
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    val change = event.changes.firstOrNull() ?: break
+                                    if (!change.pressed) {
+                                        onDragEnd()
+                                        break
+                                    }
+                                    val delta = change.positionChange()
+                                    if (delta.x != 0f || delta.y != 0f) {
+                                        change.consume()
+                                        onDrag(delta.x, delta.y)
+                                    }
+                                }
+                            }
+                        },
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    text = "Recent Apps",
+                    style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.padding(start = 4.dp),
+                )
+            }
             if (state.panelStyle == PanelStyle.EXPAND_PANEL) {
                 Text(
                     text = "Selalu terbuka",
