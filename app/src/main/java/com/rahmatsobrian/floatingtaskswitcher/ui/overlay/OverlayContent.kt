@@ -19,6 +19,8 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -50,6 +52,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -170,6 +173,7 @@ private fun CollapsedBubble() {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ExpandedPanel(
     state: OverlayUiState,
@@ -180,12 +184,13 @@ private fun ExpandedPanel(
     onDragEnd: () -> Unit,
     onInteraction: () -> Unit,
 ) {
-    Column(modifier = Modifier.padding(8.dp).widthIn(min = 232.dp)) {
-        Row(
+    val minPanelWidth = if (state.panelStyle == PanelStyle.VERTICAL_DOCK) 96.dp else 232.dp
+    Column(modifier = Modifier.padding(8.dp).widthIn(min = minPanelWidth)) {
+        FlowRow(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(bottom = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
+            verticalArrangement = Arrangement.spacedBy(2.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             // Dedicated drag handle: dragging the whole panel is only recognized on this left
@@ -357,6 +362,7 @@ private fun AppIconItem(
                 style = MaterialTheme.typography.labelSmall,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
                 modifier = Modifier.size(width = 52.dp, height = 16.dp),
             )
         }
