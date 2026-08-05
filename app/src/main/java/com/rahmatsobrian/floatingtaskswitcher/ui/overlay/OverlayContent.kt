@@ -20,8 +20,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -178,40 +180,46 @@ private fun ExpandedPanel(
     onDragEnd: () -> Unit,
     onInteraction: () -> Unit,
 ) {
-    Column(modifier = Modifier.padding(8.dp)) {
+    Column(modifier = Modifier.padding(8.dp).widthIn(min = 232.dp)) {
         Row(
-            modifier = Modifier.padding(bottom = 6.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                // Dedicated drag handle: dragging the whole panel is only recognized here, not
-                // over the app icons or the Kecilkan button, so a slightly shaky tap on those
-                // never gets misread as "the user is dragging the panel".
+            // Dedicated drag handle: dragging the whole panel is only recognized on this left
+            // strip (icon + "Recent Apps" label + generous padding for an easy-to-hit target),
+            // not over the app icons or the Kecilkan button, so a slightly shaky tap on those
+            // never gets misread as "the user is dragging the panel".
+            Row(
+                modifier = Modifier
+                    .padding(vertical = 6.dp, horizontal = 2.dp)
+                    .pointerInput(Unit) {
+                        awaitEachGesture {
+                            awaitFirstDown(requireUnconsumed = false)
+                            onInteraction()
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                val change = event.changes.firstOrNull() ?: break
+                                if (!change.pressed) {
+                                    onDragEnd()
+                                    break
+                                }
+                                val delta = change.positionChange()
+                                if (delta.x != 0f || delta.y != 0f) {
+                                    change.consume()
+                                    onDrag(delta.x, delta.y)
+                                }
+                            }
+                        }
+                    },
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 Icon(
                     imageVector = Icons.Filled.DragIndicator,
                     contentDescription = "Geser panel",
-                    modifier = Modifier
-                        .size(18.dp)
-                        .pointerInput(Unit) {
-                            awaitEachGesture {
-                                awaitFirstDown(requireUnconsumed = false)
-                                onInteraction()
-                                while (true) {
-                                    val event = awaitPointerEvent()
-                                    val change = event.changes.firstOrNull() ?: break
-                                    if (!change.pressed) {
-                                        onDragEnd()
-                                        break
-                                    }
-                                    val delta = change.positionChange()
-                                    if (delta.x != 0f || delta.y != 0f) {
-                                        change.consume()
-                                        onDrag(delta.x, delta.y)
-                                    }
-                                }
-                            }
-                        },
+                    modifier = Modifier.size(18.dp),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Text(

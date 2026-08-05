@@ -22,7 +22,6 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -37,6 +36,7 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.rahmatsobrian.floatingtaskswitcher.data.local.DarkModeOption
 import com.rahmatsobrian.floatingtaskswitcher.data.local.PanelStyle
+import com.rahmatsobrian.floatingtaskswitcher.ui.components.AppTopBar
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -54,7 +54,7 @@ fun SettingsScreen(
     }
 
     Scaffold(
-        topBar = { TopAppBar(title = { Text("Pengaturan") }) },
+        topBar = { AppTopBar(title = "Pengaturan") },
     ) { padding ->
         LazyColumn(
             modifier = Modifier.padding(padding),

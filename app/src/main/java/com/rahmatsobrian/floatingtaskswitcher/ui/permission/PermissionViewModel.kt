@@ -36,6 +36,21 @@ class PermissionViewModel @Inject constructor(
     private val _rootRequestInFlight = MutableStateFlow(false)
     val rootRequestInFlight: StateFlow<Boolean> = _rootRequestInFlight.asStateFlow()
 
+    /** Drives the "Setup Sekali Klik" flow: when true, the screen auto-opens the next
+     *  not-yet-granted essential permission's Settings page every time it detects a change,
+     *  so testing after a fresh reinstall only needs repeated back-and-forth, not hunting for
+     *  the right button each time. */
+    private val _guidedSetupActive = MutableStateFlow(false)
+    val guidedSetupActive: StateFlow<Boolean> = _guidedSetupActive.asStateFlow()
+
+    fun startGuidedSetup() {
+        _guidedSetupActive.value = true
+    }
+
+    fun stopGuidedSetup() {
+        _guidedSetupActive.value = false
+    }
+
     init {
         refresh()
     }
