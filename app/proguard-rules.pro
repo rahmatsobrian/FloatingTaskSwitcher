@@ -1,24 +1,15 @@
-# Room
--keep class * extends androidx.room.RoomDatabase
--dontwarn androidx.room.paging.**
-
-# Hilt / Dagger generated code
+# Hilt
 -keep class dagger.hilt.** { *; }
--keep class javax.inject.** { *; }
+-keep class * extends dagger.hilt.android.internal.managers.ViewComponentManager { *; }
 
-# kotlinx.serialization
--keepattributes *Annotation*, InnerClasses
--dontnote kotlinx.serialization.AnnotationsKt
--keepclassmembers class kotlinx.serialization.json.** { *** Companion; }
--keepclasseswithmembers class **$$serializer { *** serializer(...); }
-
-# Data classes used as manifest payloads must keep field names for JSON
--keep class com.siroha.resourcetransfer.domain.model.** { *; }
-
-# Shizuku — ShizukuHelper calls Shizuku.newProcess via reflection, and the
-# Shizuku app itself binds to ShizukuProvider/ShizukuService by class name,
-# so none of this can be renamed or stripped.
+# Shizuku
 -keep class rikka.shizuku.** { *; }
--keep interface rikka.shizuku.** { *; }
--dontwarn rikka.shizuku.**
 
+# libsu
+-keep class com.topjohnwu.superuser.** { *; }
+
+# Room entities
+-keep class com.rahmatsobrian.floatingtaskswitcher.data.local.entity.** { *; }
+
+-keepattributes *Annotation*
+-keepattributes Signature

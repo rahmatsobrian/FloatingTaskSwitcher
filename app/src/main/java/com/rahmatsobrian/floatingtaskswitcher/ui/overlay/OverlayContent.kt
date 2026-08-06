@@ -23,9 +23,10 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -184,8 +185,19 @@ private fun ExpandedPanel(
     onDragEnd: () -> Unit,
     onInteraction: () -> Unit,
 ) {
-    val minPanelWidth = if (state.panelStyle == PanelStyle.VERTICAL_DOCK) 96.dp else 232.dp
-    Column(modifier = Modifier.padding(8.dp).widthIn(min = minPanelWidth)) {
+    // Every child below uses fillMaxWidth()/fillMaxSize() against THIS fixed width rather than
+    // each sizing itself independently. That matters because the floating window itself is
+    // WRAP_CONTENT: without an explicit width here, fillMaxWidth() on the header would resolve
+    // against the window's own loose incoming constraint (effectively close to the full screen
+    // width) instead of the icon list's actual width - which is exactly what made Vertical Dock
+    // balloon out sideways and left Grid with dead space past its 4th column.
+    val contentWidth = when (state.panelStyle) {
+        PanelStyle.VERTICAL_DOCK -> 100.dp
+        PanelStyle.GRID -> 260.dp
+        PanelStyle.COMPACT -> 220.dp
+        PanelStyle.HORIZONTAL_DOCK, PanelStyle.EXPAND_PANEL, PanelStyle.MINI_BUBBLE -> 300.dp
+    }
+    Column(modifier = Modifier.padding(8.dp).width(contentWidth)) {
         FlowRow(
             modifier = Modifier
                 .fillMaxWidth()
@@ -282,7 +294,7 @@ private fun ExpandedPanel(
 
         when (state.panelStyle) {
             PanelStyle.VERTICAL_DOCK -> LazyColumn(
-                modifier = Modifier.size(width = 72.dp, height = 320.dp),
+                modifier = Modifier.fillMaxWidth().height(320.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 items(state.filteredApps, key = { it.packageName }) { app ->
@@ -291,7 +303,7 @@ private fun ExpandedPanel(
             }
             PanelStyle.GRID -> LazyVerticalGrid(
                 columns = GridCells.Fixed(4),
-                modifier = Modifier.size(width = 260.dp, height = 220.dp),
+                modifier = Modifier.fillMaxWidth().height(220.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
@@ -299,7 +311,7 @@ private fun ExpandedPanel(
                     AppIconItem(app = app, iconSize = 40.dp, showLabel = true, onClick = { onAppClick(app) }, onLongClick = { onAppLongClick(app) })
                 }
             }
-            PanelStyle.COMPACT -> LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            PanelStyle.COMPACT -> LazyRow(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 items(state.filteredApps, key = { it.packageName }) { app ->
                     AppIconItem(app = app, iconSize = 32.dp, showLabel = false, onClick = { onAppClick(app) }, onLongClick = { onAppLongClick(app) })
                 }
@@ -308,7 +320,7 @@ private fun ExpandedPanel(
             // bubble in this style switches directly to the most-recent app instead of
             // expanding). EXPAND_PANEL and HORIZONTAL_DOCK share this roomier row layout.
             PanelStyle.HORIZONTAL_DOCK, PanelStyle.EXPAND_PANEL, PanelStyle.MINI_BUBBLE ->
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                LazyRow(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     items(state.filteredApps, key = { it.packageName }) { app ->
                         AppIconItem(app = app, iconSize = 44.dp, showLabel = true, onClick = { onAppClick(app) }, onLongClick = { onAppLongClick(app) })
                     }

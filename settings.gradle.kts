@@ -5,15 +5,15 @@ pluginManagement {
         gradlePluginPortal()
     }
 }
+
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
         google()
         mavenCentral()
-        // Shizuku (dev.rikka.shizuku:api/provider) is published on JitPack, not Maven Central.
-        maven("https://jitpack.io")
+        maven { url = uri("https://jitpack.io") } // libsu, Shizuku-API
     }
 }
 
-rootProject.name = "ResourceTransfer"
+rootProject.name = "FloatingTaskSwitcher"
 include(":app")
