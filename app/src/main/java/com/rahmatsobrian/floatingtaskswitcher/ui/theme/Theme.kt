@@ -3,23 +3,12 @@ package com.rahmatsobrian.floatingtaskswitcher.ui.theme
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import com.rahmatsobrian.floatingtaskswitcher.data.local.DarkModeOption
-
-private val SeedPrimary = Color(0xFF3E6E4C)
-
-private val LightColors = lightColorScheme(primary = SeedPrimary)
-private val DarkColors = darkColorScheme(primary = Color(0xFF9CD6A9))
-private val AmoledColors = DarkColors.copy(
-    background = Color.Black,
-    surface = Color.Black,
-)
 
 @Composable
 fun FloatingTaskSwitcherTheme(
@@ -40,11 +29,11 @@ fun FloatingTaskSwitcherTheme(
     val colorScheme = when {
         darkModeOption == DarkModeOption.AMOLED && dynamicColorEnabled && dynamicSupported ->
             dynamicDarkColorScheme(context).copy(background = Color.Black, surface = Color.Black)
-        darkModeOption == DarkModeOption.AMOLED -> AmoledColors
+        darkModeOption == DarkModeOption.AMOLED -> AppAmoledColors
         dynamicColorEnabled && dynamicSupported && useDark -> dynamicDarkColorScheme(context)
         dynamicColorEnabled && dynamicSupported && !useDark -> dynamicLightColorScheme(context)
-        useDark -> DarkColors
-        else -> LightColors
+        useDark -> AppDarkColors
+        else -> AppLightColors
     }
 
     MaterialTheme(

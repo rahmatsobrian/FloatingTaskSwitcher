@@ -5,6 +5,7 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.rahmatsobrian.floatingtaskswitcher.ui.about.AboutScreen
 import com.rahmatsobrian.floatingtaskswitcher.ui.home.HomeScreen
 import com.rahmatsobrian.floatingtaskswitcher.ui.permission.PermissionManagerScreen
 import com.rahmatsobrian.floatingtaskswitcher.ui.settings.SettingsScreen
@@ -22,7 +23,13 @@ fun FloatingTaskSwitcherNavGraph(navController: NavHostController = rememberNavC
             PermissionManagerScreen(onBack = navController::popBackStack)
         }
         composable(Destination.Settings.route) {
-            SettingsScreen(onBack = navController::popBackStack)
+            SettingsScreen(
+                onBack = navController::popBackStack,
+                onOpenAbout = { navController.navigate(Destination.About.route) },
+            )
+        }
+        composable(Destination.About.route) {
+            AboutScreen(onBack = navController::popBackStack)
         }
     }
 }

@@ -1,14 +1,14 @@
 package com.rahmatsobrian.floatingtaskswitcher.ui.overlay
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandIn
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.animation.shrinkOut
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -88,7 +88,7 @@ fun OverlayRoot(
 ) {
     val cornerRadius by animateDpAsState(
         targetValue = state.cornerRadiusDp.dp,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
+        animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
         label = "cornerRadius",
     )
     val effectiveAlpha by animateFloatAsState(
@@ -141,8 +141,14 @@ fun OverlayRoot(
     ) {
         AnimatedVisibility(
             visible = state.isExpanded,
-            enter = expandHorizontally() + fadeIn(),
-            exit = shrinkHorizontally() + fadeOut(),
+            enter = expandIn(
+                animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing),
+                expandFrom = Alignment.TopStart,
+            ) + fadeIn(animationSpec = tween(durationMillis = 220)),
+            exit = shrinkOut(
+                animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
+                shrinkTowards = Alignment.TopStart,
+            ) + fadeOut(animationSpec = tween(durationMillis = 160)),
         ) {
             ExpandedPanel(
                 state = state,
