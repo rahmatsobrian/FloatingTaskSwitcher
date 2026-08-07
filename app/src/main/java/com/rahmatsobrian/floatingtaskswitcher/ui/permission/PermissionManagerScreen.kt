@@ -5,20 +5,36 @@ import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import android.widget.Toast
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.AssistChip
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AdminPanelSettings
+import androidx.compose.material.icons.filled.BatteryChargingFull
+import androidx.compose.material.icons.filled.Block
+import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.Cancel
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.HourglassEmpty
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Layers
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.QueryStats
+import androidx.compose.material.icons.filled.SettingsAccessibility
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
@@ -27,7 +43,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -40,6 +60,7 @@ import com.rahmatsobrian.floatingtaskswitcher.domain.model.PermissionStatus
 import com.rahmatsobrian.floatingtaskswitcher.ui.components.AppTopBar
 
 private data class PermissionRow(
+    val icon: ImageVector,
     val title: String,
     val reason: String,
     val status: PermissionStatus,
@@ -169,14 +190,21 @@ private fun PermissionCard(row: PermissionRow, isBusy: Boolean) {
     Card {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(
-                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
                 modifier = Modifier.padding(bottom = 2.dp),
             ) {
-                Text(text = row.title, style = androidx.compose.material3.MaterialTheme.typography.titleMedium)
+                Icon(
+                    imageVector = row.icon,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+                Text(text = row.title, style = MaterialTheme.typography.titleMedium)
             }
-            Text(text = row.reason, style = androidx.compose.material3.MaterialTheme.typography.bodyMedium)
+            Text(text = row.reason, style = MaterialTheme.typography.bodyMedium)
             Row(
                 modifier = Modifier.padding(top = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 StatusChip(status = row.status)
@@ -192,6 +220,8 @@ private fun PermissionCard(row: PermissionRow, isBusy: Boolean) {
     }
 }
 
+private data class StatusStyle(val icon: ImageVector, val container: Color, val content: Color)
+
 @Composable
 private fun StatusChip(status: PermissionStatus) {
     val label = when (status) {
@@ -201,7 +231,30 @@ private fun StatusChip(status: PermissionStatus) {
         PermissionStatus.AVAILABLE -> stringRes(R.string.status_available)
         PermissionStatus.CHECKING -> stringRes(R.string.status_checking)
     }
-    AssistChip(onClick = {}, label = { Text(label) })
+    val scheme = MaterialTheme.colorScheme
+    val style = when (status) {
+        PermissionStatus.GRANTED -> StatusStyle(Icons.Filled.CheckCircle, scheme.primaryContainer, scheme.onPrimaryContainer)
+        PermissionStatus.NOT_GRANTED -> StatusStyle(Icons.Filled.Cancel, scheme.errorContainer, scheme.onErrorContainer)
+        PermissionStatus.AVAILABLE -> StatusStyle(Icons.Filled.Info, scheme.tertiaryContainer, scheme.onTertiaryContainer)
+        PermissionStatus.UNSUPPORTED -> StatusStyle(Icons.Filled.Block, scheme.surfaceVariant, scheme.onSurfaceVariant)
+        PermissionStatus.CHECKING -> StatusStyle(Icons.Filled.HourglassEmpty, scheme.surfaceVariant, scheme.onSurfaceVariant)
+    }
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(50))
+            .background(style.container)
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Icon(
+            imageVector = style.icon,
+            contentDescription = null,
+            tint = style.content,
+            modifier = Modifier.size(16.dp),
+        )
+        Text(text = label, style = MaterialTheme.typography.labelMedium, color = style.content)
+    }
 }
 
 @Composable
@@ -219,42 +272,49 @@ private fun buildPermissionRows(
     onRequestRoot: () -> Unit,
 ): List<PermissionRow> = listOf(
     PermissionRow(
+        Icons.Filled.Layers,
         stringRes(R.string.permission_overlay_title),
         stringRes(R.string.permission_overlay_reason),
         snapshot.overlay,
         onRequestOverlay,
     ),
     PermissionRow(
+        Icons.Filled.SettingsAccessibility,
         stringRes(R.string.permission_accessibility_title),
         stringRes(R.string.permission_accessibility_reason),
         snapshot.accessibility,
         onRequestAccessibility,
     ),
     PermissionRow(
+        Icons.Filled.QueryStats,
         stringRes(R.string.permission_usage_title),
         stringRes(R.string.permission_usage_reason),
         snapshot.usageAccess,
         onRequestUsageAccess,
     ),
     PermissionRow(
+        Icons.Filled.Notifications,
         stringRes(R.string.permission_notification_title),
         stringRes(R.string.permission_notification_reason),
         snapshot.notification,
         onRequestNotification,
     ),
     PermissionRow(
+        Icons.Filled.BatteryChargingFull,
         stringRes(R.string.permission_battery_title),
         stringRes(R.string.permission_battery_reason),
         snapshot.batteryOptimizationExempt,
         onRequestBattery,
     ),
     PermissionRow(
+        Icons.Filled.Bolt,
         stringRes(R.string.permission_shizuku_title),
         stringRes(R.string.permission_shizuku_reason),
         snapshot.shizuku,
         onRequestShizuku,
     ),
     PermissionRow(
+        Icons.Filled.AdminPanelSettings,
         stringRes(R.string.permission_root_title),
         stringRes(R.string.permission_root_reason),
         snapshot.root,
